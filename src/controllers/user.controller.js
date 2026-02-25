@@ -4,10 +4,12 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
+import Cloudinary from "cloudinary";
 
 const generateAccessAndRefreshTokens = async (userId) => {
     try {
-        const user = User.findById(userId);
+        const user = await User.findById(userId);
         const accessToken = user.generateAccessToken();
         const refreshToken = user.generateRefreshToken();
 
@@ -41,33 +43,30 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new ApiError(409, "user with email or username already exist");
     }
 
-    const avatarLocalPath = req.files?.avatar[0]?.path;
+    const avatarLocalPath = req.files?.newAvatar[0]?.path;
     const coverImageLocalPath = req.files?.coverImage[0]?.path;
 
     if (!avatarLocalPath) {
-        throw new ApiError(400, "Avatar file is required");
+        throw new ApiError(400, "newAvatar file is required");
     }
 
-    const avatar = await uploadOnCloudinary(avatarLocalPath);
+    const newAvatar = await uploadOnCloudinary(avatarLocalPath);
     const coverImage = await uploadOnCloudinary(coverImageLocalPath);
 
-    if (!avatar) {
-        throw new ApiError(400, "Avatar file is required");
+    if (!newAvatar) {
+        throw new ApiError(400, "newAvatar file is required");
     }
 
     const user = await User.create({
         fullname,
-        avatar: avatar.url,
+        newAvatar: newAvatar.url,
         coverImage: coverImage?.url || "",
         email,
         password,
         username: username.toLowerCase(),
     });
 
-    const createdUser = await User.findById(user._id).select(
-        "-password -refreshToken"
-    );
-    7777777777777777777;
+    const createdUser = await User.findById(user._id);
 
     if (!createdUser) {
         throw new ApiError(
@@ -84,13 +83,13 @@ const registerUser = asyncHandler(async (req, res) => {
 });
 
 const loginUser = asyncHandler(async (req, res) => {
-    const { email, username, password } = req.body;
+    const { email, username, password } = req.body || {};
 
     if (!username && !email) {
         throw new ApiError(400, "username or email is required");
     }
 
-    const user = await User.find({
+    const user = await User.findOne({
         $or: [{ username }, { email }],
     });
 
@@ -108,9 +107,7 @@ const loginUser = asyncHandler(async (req, res) => {
         user._id
     );
 
-    const loggedInUser = await User.findById(user._id).select(
-        "-password -refreshToken"
-    );
+    const loggedInUser = await User.findById(user._id);
 
     const options = {
         httpOnly: true,
@@ -134,8 +131,8 @@ const logoutUser = asyncHandler(async (req, res) => {
     await User.findByIdAndUpdate(
         req.user._id,
         {
-            $set: {
-                refreshToken: undefined,
+            $unset: {
+                refreshToken: 1,
             },
         },
         { new: true }
@@ -201,7 +198,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 });
 
 const changeCurrentPassword = asyncHandler(async (req, res) => {
-    const { oldPassword, newPassword, confirmPassword } = req.body;
+    const { oldPassword, newPassword } = req.body;
 
     const user = await User.findById(req.user?._id);
     const isPasswordValid = await user.isPasswordCorrect(oldPassword);
@@ -243,7 +240,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
         },
 
         { new: true }
-    ).select("-password");
+    );
 
     return res
         .status(200)
@@ -256,25 +253,42 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     const avatarLocalPath = req.file?.path;
 
     if (!avatarLocalPath) {
-        throw new ApiError(400, "Avatar file is missing");
+        throw new ApiError(400, "newAvatar file is missing");
     }
 
-    const avatar = await uploadOnCloudinary(avatarLocalPath);
-    if (!avatar.url) {
-        throw new ApiError(400, "Error while uploading avatar");
+    const existingUser = await User.findById(req.user?._id);
+
+    const newAvatar = await uploadOnCloudinary(avatarLocalPath);
+
+    if (!newAvatar.url) {
+        throw new ApiError(400, "Error while uploading newAvatar");
     }
 
-    const user = await User.findByIdAndUpdate(
+    const updatedUser = await User.findByIdAndUpdate(
         req.user?._id,
         {
-            $set: { avatar: avatar.url },
+            $set: {
+                avatar: newAvatar.url,
+                avatarPublicId: newAvatar.public_id,
+            },
         },
         { new: true }
-    ).select("-password");
+    );
+
+    // delete the previous avatar from cloudinary if exists
+    if (existingUser?.avatarPublicId) {
+        await Cloudinary.uploader.destroy(existingUser.avatarPublicId);
+    }
 
     return res
         .status(200)
-        .json(new ApiResponse(200, user, "avatar image updated successfully"));
+        .json(
+            new ApiResponse(
+                200,
+                updatedUser,
+                "newAvatar image updated successfully"
+            )
+        );
 });
 
 const updateUserCoverImage = asyncHandler(async (req, res) => {
@@ -295,7 +309,7 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
             $set: { coverImage: coverImage.url },
         },
         { new: true }
-    ).select("-password");
+    );
 
     return res
         .status(200)
@@ -361,7 +375,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
                 subscribersCount: 1,
                 channelsSubscribedToCount: 1,
                 isSubscribed: 1,
-                avatar: 1,
+                newAvatar: 1,
                 coverImage: 1,
                 email: 1,
             },
@@ -395,7 +409,7 @@ const getWatchHistory = asyncHandler(async (req, res) => {
             $lookup: {
                 from: "videos",
                 localField: "watchHistory",
-                foreingField: "_id",
+                foreignField: "_id",
                 as: "watchHistory",
                 pipeline: [
                     {
@@ -409,7 +423,7 @@ const getWatchHistory = asyncHandler(async (req, res) => {
                                     $project: {
                                         fullname: 1,
                                         username: 1,
-                                        avatar: 1,
+                                        newAvatar: 1,
                                     },
                                 },
                             ],

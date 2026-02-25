@@ -31,7 +31,6 @@ router.route("/register").post(
     ]),
     registerUser
 );
-
 router.route("/login").post(loginUser);
 
 // secured routes
@@ -47,7 +46,7 @@ router
     .route("/cover-image")
     .patch(verifyJWT, upload.single("coverImage"), updateUserCoverImage);
 
-router.route("/c/:username").get(verifyJWT, getUserChannelProfile);
 router.route("/watch-history").get(verifyJWT, getWatchHistory);
+router.route("/channel/:username").get(verifyJWT, getUserChannelProfile);
 
 export default router;
