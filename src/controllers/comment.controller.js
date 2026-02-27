@@ -4,6 +4,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { Video } from "../models/video.model.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import mongoose from "mongoose";
+import { getPagination } from "../utils/pagination.js";
 
 // fetch all video comments
 const getVideoComments = asyncHandler(async (req, res) => {
@@ -69,14 +70,7 @@ const getVideoComments = asyncHandler(async (req, res) => {
             {
                 comments: comments.docs,
 
-                pagination: {
-                    totalComments: comments.totalDocs,
-                    limit: comments.limit,
-                    page: comments.page,
-                    totalPages: comments.totalPages,
-                    hasNextPage: comments.hasNextPage,
-                    hasPrevPage: comments.hasPrevPage,
-                },
+                pagination: getPagination(comments),
             },
             "all comments fetched successfully!"
         )

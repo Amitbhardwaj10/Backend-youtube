@@ -4,6 +4,8 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { Video } from "../models/video.model.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import mongoose, { Aggregate } from "mongoose";
+import { getPagination } from "../utils/pagination.js";
+import { User } from "../models/user.model.js";
 
 const getAllVideos = asyncHandler(async (req, res) => {
     const { search, sortBy, sortType, userId } = req.query;
@@ -89,14 +91,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
             {
                 videos: videos.docs || [],
 
-                pagination: {
-                    totalVideos: videos.totalDocs,
-                    limit: videos.limit,
-                    page: videos.page,
-                    totalPages: videos.totalPages,
-                    hasNextPage: videos.hasNextPage,
-                    hasPrevPage: videos.hasPrevPage,
-                },
+                pagination: getPagination(videos),
             },
             "videos fetched successfully"
         )
@@ -117,8 +112,11 @@ const publishAVideo = asyncHandler(async (req, res) => {
         throw new ApiError(400, "video and thumbnail is required");
     }
 
-    const uploadedVideo = await uploadOnCloudinary(videoLocalPath);
-    const uploadedThumbnail = await uploadOnCloudinary(thumbnailLocalPath);
+    const uploadedVideo = await uploadOnCloudinary(videoLocalPath, "video");
+    const uploadedThumbnail = await uploadOnCloudinary(
+        thumbnailLocalPath,
+        "image"
+    );
 
     if (!uploadedVideo || !uploadedThumbnail) {
         throw new ApiError(400, "failed to upload on cloudinary!");
@@ -145,4 +143,107 @@ const publishAVideo = asyncHandler(async (req, res) => {
     );
 });
 
-export { getAllVideos, publishAVideo };
+const getVideoById = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
+
+    if (!videoId || !mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "invalid video id");
+    }
+
+    const pipeline = [
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(videoId),
+            },
+        },
+
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner",
+                pipeline: [
+                    {
+                        $project: {
+                            avatar: 1,
+                            username: 1,
+                        },
+                    },
+                ],
+            },
+        },
+
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "owner",
+                foreignField: "channel",
+                as: "subscribers",
+            },
+        },
+
+        {
+            $addFields: {
+                owner: {
+                    $first: "$owner",
+                },
+
+                subscribersCount: {
+                    $size: "$subscribers",
+                },
+
+                isSubscribed: {
+                    $in: [req.user?._id, "$subscribers.subscriber"],
+                },
+            },
+        },
+
+        {
+            $project: {
+                videoFile: 1,
+                thumbnail: 1,
+                title: 1,
+                description: 1,
+                duration: 1,
+                views: 1,
+                createdAt: 1,
+                owner: 1,
+                subscribersCount: 1,
+                isSubscribed: 1,
+            },
+        },
+    ];
+
+    // increase the view count by 1 if the user has not watched the video before
+
+    if (req.user) {
+        const alreadyWatched = await User.findOne({
+            _id: req.user._id,
+            watchHistory: videoId,
+        });
+
+        if (!alreadyWatched) {
+            await Video.updateOne({ _id: videoId }, { $inc: { views: 1 } });
+
+            await User.updateOne(
+                { _id: req.user._id },
+                { $addToSet: { watchHistory: videoId } }
+            );
+        }
+    } else {
+        await Video.updateOne({ _id: videoId }, { $inc: { views: 1 } });
+    }
+
+    const video = await Video.aggregate(pipeline);
+
+    if (!video.length) {
+        throw new ApiError(404, "video not found");
+    }
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, video[0], "video fetched successfully"));
+});
+
+export { getAllVideos, publishAVideo, getVideoById };
