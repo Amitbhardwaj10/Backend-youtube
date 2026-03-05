@@ -417,9 +417,7 @@ const getWatchHistory = asyncHandler(async (req, res) => {
                             pipeline: [
                                 {
                                     $project: {
-                                        fullname: 1,
                                         username: 1,
-                                        newAvatar: 1,
                                     },
                                 },
                             ],
@@ -431,6 +429,18 @@ const getWatchHistory = asyncHandler(async (req, res) => {
                             owner: {
                                 $first: "$owner",
                             },
+                        },
+                    },
+
+                    {
+                        $project: {
+                            thumbnail: 1,
+                            title: 1,
+                            description: 1,
+                            duration: 1,
+                            views: 1,
+                            createdAt: 1,
+                            owner: 1,
                         },
                     },
                 ],

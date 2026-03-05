@@ -22,44 +22,17 @@ const getAllVideos = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Invalid userId");
     }
 
-    const match = {};
+    const match = {
+        owner: new mongoose.Types.ObjectId(userId),
+    };
 
     if (search?.trim()) {
-        match.title = { $regex: search.trim(), $options: "i" };
-    }
-
-    if (userId) {
-        match.owner = new mongoose.Types.ObjectId(userId);
+        match.$text = { $search: search };
     }
 
     const pipeline = [
         {
             $match: match,
-        },
-
-        {
-            $lookup: {
-                from: "users",
-                localField: "owner",
-                foreignField: "_id",
-                as: "owner",
-                pipeline: [
-                    {
-                        $project: {
-                            username: 1,
-                            avatar: 1,
-                        },
-                    },
-                ],
-            },
-        },
-
-        {
-            $addFields: {
-                owner: {
-                    $first: "$owner",
-                },
-            },
         },
 
         {
@@ -75,7 +48,6 @@ const getAllVideos = asyncHandler(async (req, res) => {
                 views: 1,
                 duration: 1,
                 createdAt: 1,
-                owner: 1,
             },
         },
     ];
@@ -216,7 +188,6 @@ const getVideoById = asyncHandler(async (req, res) => {
     ];
 
     // increase the view count by 1 if the user has not watched the video before
-
     if (req.user) {
         const alreadyWatched = await User.findOne({
             _id: req.user._id,
