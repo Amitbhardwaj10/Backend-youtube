@@ -3,9 +3,10 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { Video } from "../models/video.model.js";
 import ApiResponse from "../utils/ApiResponse.js";
-import mongoose, { Aggregate } from "mongoose";
+import mongoose from "mongoose";
 import { getPagination } from "../utils/pagination.js";
 import { User } from "../models/user.model.js";
+import cloudinary from "cloudinary";
 
 const getAllVideos = asyncHandler(async (req, res) => {
     const { search, sortBy, sortType, userId } = req.query;
@@ -217,4 +218,61 @@ const getVideoById = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, video[0], "video fetched successfully"));
 });
 
-export { getAllVideos, publishAVideo, getVideoById };
+const updateVideo = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
+    const { title, description } = req.body;
+    const thumbnailLocalPath = req.file?.path;
+
+    if (!videoId || !mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "invalid video id");
+    }
+
+    if (!title && !description && !thumbnailLocalPath) {
+        throw new ApiError(400, "at least one field is required to update");
+    }
+
+    const video = await Video.findOne({ _id: videoId, owner: req.user._id });
+
+    if (!video) {
+        throw new ApiError(404, "video not found or you are not the owner");
+    }
+
+    if (title) {
+        video.title = title;
+    }
+
+    if (description) {
+        video.description = description;
+    }
+
+    const oldThumbnailPublicId = video.thumbnailPublicId;
+
+    if (thumbnailLocalPath) {
+        const uploadedThumbnail = await uploadOnCloudinary(
+            thumbnailLocalPath,
+            "image"
+        );
+
+        if (!uploadedThumbnail) {
+            throw new ApiError(
+                400,
+                "failed to upload thumbnail on cloudinary!"
+            );
+        } else {
+            video.thumbnail = uploadedThumbnail.url;
+            video.thumbnailPublicId = uploadedThumbnail.public_id;
+        }
+    }
+
+    if (oldThumbnailPublicId && thumbnailLocalPath) {
+        await cloudinary.uploader.destroy(oldThumbnailPublicId);
+    }
+
+    await video.save();
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, {}, "video updated successfully"));
+});
+
+export { getAllVideos, publishAVideo, getVideoById, updateVideo };

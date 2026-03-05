@@ -249,7 +249,7 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     const avatarLocalPath = req.file?.path;
 
     if (!avatarLocalPath) {
-        throw new ApiError(400, "newAvatar file is missing");
+        throw new ApiError(400, "new avatar file is missing");
     }
 
     const existingUser = await User.findById(req.user?._id);
@@ -257,7 +257,7 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     const newAvatar = await uploadOnCloudinary(avatarLocalPath);
 
     if (!newAvatar.url) {
-        throw new ApiError(400, "Error while uploading newAvatar");
+        throw new ApiError(400, "Error while uploading new avatar");
     }
 
     const updatedUser = await User.findByIdAndUpdate(
@@ -282,7 +282,7 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
             new ApiResponse(
                 200,
                 updatedUser,
-                "newAvatar image updated successfully"
+                "new avatar image updated successfully"
             )
         );
 });
