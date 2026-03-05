@@ -275,4 +275,69 @@ const updateVideo = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, {}, "video updated successfully"));
 });
 
-export { getAllVideos, publishAVideo, getVideoById, updateVideo };
+const deleteVideo = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
+
+    if (!videoId || !mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "invalid video id");
+    }
+
+    const video = await Video.findOne({ _id: videoId, owner: req.user._id });
+
+    if (!video) {
+        throw new ApiError(404, "video not found or you are not the owner");
+    }
+
+    const videoPublicId = video.videoPublicId;
+    const thumbnailPublicId = video.thumbnailPublicId;
+
+    await Video.deleteOne({ _id: videoId });
+
+    if (videoPublicId) {
+        await cloudinary.uploader.destroy(videoPublicId);
+    }
+
+    if (thumbnailPublicId) {
+        await cloudinary.uploader.destroy(thumbnailPublicId);
+    }
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, {}, "video deleted successfully"));
+});
+
+const togglePublishStatus = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
+
+    if (!videoId || !mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "invalid video id");
+    }
+
+    const video = await Video.findOne({ _id: videoId, owner: req.user._id });
+
+    if (!video) {
+        throw new ApiError(404, "video not found or you are not the owner");
+    }
+
+    video.isPublished = !video.isPublished;
+    await video.save();
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                { isPublished: video.isPublished },
+                "publish status toggled successfully"
+            )
+        );
+});
+
+export {
+    getAllVideos,
+    publishAVideo,
+    getVideoById,
+    updateVideo,
+    deleteVideo,
+    togglePublishStatus,
+};
