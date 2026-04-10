@@ -11,6 +11,8 @@ import {
     getUserChannelProfile,
     getWatchHistory,
     changeCurrentPassword,
+    verifyEmail,
+    resendVerificationEmail,
 } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
@@ -31,9 +33,14 @@ router.route("/register").post(
     ]),
     registerUser
 );
+
+router.route("/user/verify-email/:token").post(verifyEmail);
 router.route("/login").post(loginUser);
 
 // secured routes
+router
+    .route("/resend-verification-email")
+    .post(verifyJWT, resendVerificationEmail);
 router.route("/logout").post(verifyJWT, logoutUser);
 router.route("/refresh").post(refreshAccessToken);
 router.route("/change-password").post(verifyJWT, changeCurrentPassword);

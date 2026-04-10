@@ -6,6 +6,7 @@ import ApiResponse from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import Cloudinary from "cloudinary";
+import { sendVerificationEmail } from "../utils/sendEmail.js";
 
 const generateAccessAndRefreshTokens = async (userId) => {
     try {
@@ -59,7 +60,8 @@ const registerUser = asyncHandler(async (req, res) => {
 
     const user = await User.create({
         fullname,
-        newAvatar: newAvatar.url,
+        avatar: newAvatar.url,
+        avatarPublicId: newAvatar.public_id,
         coverImage: coverImage?.url || "",
         email,
         password,
@@ -73,9 +75,77 @@ const registerUser = asyncHandler(async (req, res) => {
         );
     }
 
+    if (user.isEmailVerified) {
+        throw new ApiError(400, "email is already verified for this account");
+    } else {
+        const verificationToken = user.generateCryptoToken();
+        user.verificationToken = verificationToken;
+        user.verificationTokenExpiry = new Date(
+            Date.now() + 24 * 60 * 60 * 1000
+        );
+        await user.save({ validateBeforeSave: false });
+
+        sendVerificationEmail(user, user.verificationToken);
+    }
+
     return res
         .status(201)
         .json(new ApiResponse(200, user, "User registered successfully"));
+});
+
+const verifyEmail = asyncHandler(async (req, res) => {
+    const { token } = req.params;
+
+    if (!token) {
+        throw new ApiError(400, "verification token is missing");
+    }
+
+    const user = await User.findOne({
+        verificationToken: token,
+        verificationTokenExpiry: { $gt: new Date() },
+    });
+
+    if (!user) {
+        throw new ApiError(400, "invalid or expired verification token");
+    }
+
+    user.isEmailVerified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpiry = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, {}, "email verified successfully"));
+});
+
+const resendVerificationEmail = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+        throw new ApiError(404, "user does not exist");
+    }
+
+    if (user.isEmailVerified) {
+        throw new ApiError(400, "email is already verified for this account");
+    }
+
+    const verificationToken = user.generateCryptoToken();
+    user.verificationToken = verificationToken;
+    user.verificationTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+    await user.save({ validateBeforeSave: false });
+
+    await sendVerificationEmail(user, user.verificationToken);
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                {},
+                "verification email resent successfully. Please check your inbox."
+            )
+        );
 });
 
 const loginUser = asyncHandler(async (req, res) => {
@@ -471,4 +541,6 @@ export {
     updateUserCoverImage,
     getUserChannelProfile,
     getWatchHistory,
+    verifyEmail,
+    resendVerificationEmail,
 };

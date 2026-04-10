@@ -1,6 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 
 const userSchema = new Schema(
     {
@@ -52,9 +53,15 @@ const userSchema = new Schema(
             type: String,
             required: [true, "Password is required"],
         },
-        refreshToken: {
-            type: String,
-        },
+
+        refreshToken: String,
+
+        verificationToken: String,
+        verificationTokenExpiry: Date,
+        isEmailVerified: { type: Boolean, default: false },
+
+        passwordResetToken: String,
+        passwordResetTokenExpiry: Date,
     },
     { timestamps: true }
 );
@@ -107,6 +114,10 @@ userSchema.methods.generateRefreshToken = function () {
             expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
         }
     );
+};
+
+userSchema.methods.generateCryptoToken = function () {
+    return crypto.randomBytes(32).toString("hex");
 };
 
 export const User = mongoose.model("User", userSchema);
